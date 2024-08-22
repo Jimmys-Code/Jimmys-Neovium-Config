@@ -1,6 +1,9 @@
 vim.g.base46_cache = vim.fn.stdpath "data" .. "/nvchad/base46/"
 vim.g.mapleader = " "
 
+-- Set shortcut to change to GitHub directory
+vim.api.nvim_set_keymap('n', '<leader>gh', ':cd /Users/offbeat/Documents/GitHub<CR>', { noremap = true, silent = true })
+
 -- bootstrap lazy and all plugins
 local lazypath = vim.fn.stdpath "data" .. "/lazy/lazy.nvim"
 
