@@ -16,6 +16,9 @@ vim.api.nvim_set_keymap('n', '<leader>a', 'ggVG', { noremap = true, silent = tru
 -- Add shortcut to close current pane
 vim.api.nvim_set_keymap('n', '<leader>x', ':quit<CR>', { noremap = true, silent = true })
 
+-- Add mapping to exit terminal insert mode with Escape
+vim.api.nvim_set_keymap('t', '<Esc>', [[<C-\><C-n>]], {noremap = true})
+
 -- bootstrap lazy and all plugins
 local lazypath = vim.fn.stdpath "data" .. "/lazy/lazy.nvim"
 
