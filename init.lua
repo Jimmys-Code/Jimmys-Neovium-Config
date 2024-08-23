@@ -4,8 +4,17 @@ vim.g.mapleader = " "
 -- Set shortcut to change to GitHub directory
 vim.api.nvim_set_keymap('n', '<leader>gh', ':cd /Users/offbeat/Documents/GitHub<CR>', { noremap = true, silent = true })
 
--- Set shortcut to run the open Python file in a side terminal
-vim.api.nvim_set_keymap('n', '<leader>rp', ':vsplit | terminal python %<CR>', { noremap = true, silent = true })
+-- Add pane navigation shortcuts
+vim.api.nvim_set_keymap('n', '<C-h>', '<C-w>h', { noremap = true, silent = true })
+vim.api.nvim_set_keymap('n', '<C-l>', '<C-w>l', { noremap = true, silent = true })
+vim.api.nvim_set_keymap('n', '<C-k>', '<C-w>k', { noremap = true, silent = true })
+vim.api.nvim_set_keymap('n', '<C-j>', '<C-w>j', { noremap = true, silent = true })
+
+-- Add shortcut to select all code
+vim.api.nvim_set_keymap('n', '<leader>a', 'ggVG', { noremap = true, silent = true })
+
+-- Add shortcut to close current pane
+vim.api.nvim_set_keymap('n', '<leader>x', ':quit<CR>', { noremap = true, silent = true })
 
 -- bootstrap lazy and all plugins
 local lazypath = vim.fn.stdpath "data" .. "/lazy/lazy.nvim"
@@ -33,35 +42,22 @@ require("lazy").setup({
 
   { import = "plugins" },
 
-  -- Updated venv-selector plugin configuration
+  -- Add pyright for Python LSP and virtual environment support
   {
-    "linux-cultist/venv-selector.nvim",
-    dependencies = { "neovim/nvim-lspconfig", "nvim-telescope/telescope.nvim", "mfussenegger/nvim-dap-python" },
+    "neovim/nvim-lspconfig",
     config = function()
-      require("venv-selector").setup({
-        name = {".venv", "venv", "env"},
-        auto_refresh = true,
-        search_venv_managers = true,
-        search_workspace = true,
-        search = true,
-        path = vim.fn.getcwd(),
-        venvwrapper_path = os.getenv("HOME") .. "/.virtualenvs",
-        parents = 0,
-        enable_debug_output = true,
-      })
-    end,
-    event = "VeryLazy",
-    keys = { { "<leader>vs", "<cmd>VenvSelect<cr>", desc = "Select VirtualEnv" } },
-  },
-
-  -- Add virtualenv plugin
-  {
-    "jmcantrell/vim-virtualenv",
-    config = function()
-      -- Set up shortcuts for creating and activating virtual environments
-      vim.api.nvim_set_keymap('n', '<leader>vc', ':VirtualEnvCreate<Space>', { noremap = true })
-      vim.api.nvim_set_keymap('n', '<leader>va', ':VirtualEnvActivate<Space>', { noremap = true })
-      vim.api.nvim_set_keymap('n', '<leader>vd', ':VirtualEnvDeactivate<CR>', { noremap = true })
+      local lspconfig = require("lspconfig")
+      lspconfig.pyright.setup {
+        settings = {
+          python = {
+            analysis = {
+              autoSearchPaths = true,
+              useLibraryCodeForTypes = true,
+              diagnosticMode = "workspace"
+            },
+          },
+        },
+      }
     end,
   },
 
@@ -95,7 +91,7 @@ require("lazy").setup({
       },
       filesystem_watchers = {
         enable = true,
-        debounce_delay = 10, -- Reduced from 50 to 10
+        debounce_delay = 10,
         ignore_dirs = { "/tmp", "/var", "/home", "/Users" },
       },
     },
@@ -123,34 +119,71 @@ vim.schedule(function()
   require "mappings"
 end)
 
--- Function to create a virtual environment
-function CreateVirtualEnv()
-  local name = vim.fn.input('Enter name for new virtual environment: ')
-  if name ~= "" then
-    vim.cmd('!python -m venv ' .. name)
-    print('Virtual environment "' .. name .. '" created.')
-  else
-    print('Virtual environment creation cancelled.')
+-- Function to find and activate .venv in the project root
+function FindAndActivateVenv()
+  local function has_venv(dir)
+    return vim.fn.isdirectory(dir .. "/.venv") == 1
   end
+
+  local current_dir = vim.fn.expand("%:p:h")
+  local venv_dir = current_dir
+
+  -- Search for .venv in current and parent directories
+  while not has_venv(venv_dir) do
+    local parent = vim.fn.fnamemodify(venv_dir, ":h")
+    if parent == venv_dir then
+      -- Reached root directory, .venv not found
+      return nil
+    end
+    venv_dir = parent
+  end
+
+  local venv_path = venv_dir .. "/.venv"
+  vim.fn.setenv("VIRTUAL_ENV", venv_path)
+  vim.fn.setenv("PATH", venv_path .. "/bin:" .. vim.fn.getenv("PATH"))
+  -- Removed the print statement to avoid the "Press ENTER" prompt
+  return venv_path
 end
 
--- Set shortcut to create a new virtual environment
-vim.api.nvim_set_keymap('n', '<leader>vn', ':lua CreateVirtualEnv()<CR>', { noremap = true, silent = true })
-
--- Log virtual environment information
-vim.api.nvim_create_user_command("LogVenvInfo", function()
-  local venv_selector = require("venv-selector")
-  print("Current working directory: " .. vim.fn.getcwd())
-  print("Current venv: " .. (venv_selector.get_active_venv() or "None"))
-  print("Available venvs:")
-  for _, venv in ipairs(venv_selector.get_venvs()) do
-    print("  - " .. venv)
+-- Automatically activate .venv when opening a Python file
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "python",
+  callback = function()
+    FindAndActivateVenv()
   end
-  print("Python path: " .. vim.fn.exepath("python"))
-end, {})
+})
 
--- Enable verbose logging for venv-selector
-vim.g.venv_selector_debug = true
+-- Function to run the current Python file
+function RunPythonFile()
+  -- Save the current file
+  vim.cmd('write')
+  
+  -- Get the path of the current file
+  local file_path = vim.fn.expand('%:p')
+  
+  -- Ensure the virtual environment is activated
+  local venv = FindAndActivateVenv()
+  local python_cmd = venv and (venv .. "/bin/python") or "python"
+  
+  -- Open a new split window, run the Python file, and enter insert mode
+  vim.cmd('vsplit | terminal ' .. python_cmd .. ' ' .. vim.fn.shellescape(file_path))
+  vim.cmd('startinsert')
+end
+
+-- Set shortcut to run the current Python file
+vim.api.nvim_set_keymap('n', '<leader>r', ':lua RunPythonFile()<CR>', { noremap = true, silent = true })
+
+-- Log Python and virtual environment information
+vim.api.nvim_create_user_command("LogPythonInfo", function()
+  print("Current working directory: " .. vim.fn.getcwd())
+  print("Python path: " .. vim.fn.exepath("python"))
+  local venv = os.getenv("VIRTUAL_ENV")
+  if venv then
+    print("Active virtual environment: " .. venv)
+  else
+    print("No active virtual environment")
+  end
+end, {})
 
 -- Diagnostic function for nvim-tree
 vim.api.nvim_create_user_command("DiagnoseNvimTree", function()
